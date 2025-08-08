@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Slicer</title>
+    <style>
+        body { margin: 0; background: #000000; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { image-rendering: pixelated; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 400;
+        canvas.height = 600;
+
+        // Game state
+        let gameState = 'start';
+        let score = 0;
+        let playerX = canvas.width / 2;
+        let playerY = canvas.height / 2;
+        const playerWidth = 15; // Increased player width
+        const playerHeight = 30; // Increased player height
+        const playerSpeed = 8;
+        let streamSpeed = 2;
+        let lastTime = 0;
+        let obstacles = [];
+        let slowTime = false;
+        let slowTimeStart = 0;
+        let slowTimeCooldown = 0;
+        const slowTimeDuration = 2000;
+        const slowTimeCooldownDuration = 10000;
+        let phase = 1;
+        let phaseTimer = 0;
+        const phaseDuration = 15000;
+
+        // Input handling
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // Obstacle class
+        class Obstacle {
+            constructor(y, isSignal) {
+                this.y = y;
+                this.isSignal = isSignal;
+                this.width = Math.random() * 100 + 50;
+                this.x = Math.random() * (canvas.width - this.width);
+            }
+
+            draw() {
+                ctx.fillStyle = this.isSignal ? '#FFFFFF' : '#000000';
+                ctx.fillRect(this.x, this.y, this.width, 10);
+            }
+
+            update(deltaTime) {
+                this.y += slowTime ? streamSpeed * 0.2 : streamSpeed;
+                if (this.y > canvas.height) return true;
+                return false;
+            }
+        }
+
+        // Generate obstacles
+        function generateObstacle() {
+            const isSignal = Math.random() > (0.3 + phase * 0.1);
+            obstacles.push(new Obstacle(-10, isSignal));
+        }
+
+        // Collision detection
+        function checkCollision() {
+            for (let obs of obstacles) {
+                if (
+                    playerX + playerWidth > obs.x &&
+                    playerX < obs.x + obs.width &&
+                    playerY + playerHeight > obs.y &&
+                    playerY < obs.y + 10
+                ) {
+                    if (obs.isSignal) {
+                        score += 10;
+                        obstacles = obstacles.filter(o => o !== obs);
+                    } else {
+                        gameState = 'gameOver';
+                    }
+                }
+            }
+        }
+        
+        // Draw the hangman-style player
+        function drawPlayer() {
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            
+            // Head
+            ctx.beginPath();
+            ctx.arc(playerX + playerWidth / 2, playerY + 5, 5, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Body
+            ctx.beginPath();
+            ctx.moveTo(playerX + playerWidth / 2, playerY + 10);
+            ctx.lineTo(playerX + playerWidth / 2, playerY + 20);
+            ctx.stroke();
+
+            // Arms
+            ctx.beginPath();
+            ctx.moveTo(playerX, playerY + 15);
+            ctx.lineTo(playerX + playerWidth, playerY + 15);
+            ctx.stroke();
+
+            // Legs
+            ctx.beginPath();
+            ctx.moveTo(playerX + playerWidth / 2, playerY + 20);
+            ctx.lineTo(playerX, playerY + 28);
+            ctx.moveTo(playerX + playerWidth / 2, playerY + 20);
+            ctx.lineTo(playerX + playerWidth, playerY + 28);
+            ctx.stroke();
+        }
+
+        // Glitch effect
+        function drawGlitch() {
+            if (Math.random() < 0.05) {
+                ctx.fillStyle = Math.random() < 0.5 ? '#FFFFFF' : '#000000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            for (let i = 0; i < 5; i++) {
+                if (Math.random() < 0.1) {
+                    ctx.fillStyle = Math.random() < 0.5 ? '#FFFFFF' : '#000000';
+                    ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 50, 2);
+                }
+            }
+        }
+
+        // Main game loop
+        function gameLoop(timestamp) {
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // Clear canvas
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw glitch effect
+            drawGlitch();
+
+            if (gameState === 'start') {
+                ctx.fillStyle = '#000000';
+                ctx.font = '30px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('Signal Slicer', canvas.width / 2, canvas.height / 2 - 50);
+                ctx.fillText('Press Enter to Start', canvas.width / 2, canvas.height / 2 + 50);
+                if (keys['Enter']) {
+                    gameState = 'playing';
+                    score = 0;
+                    obstacles = [];
+                    streamSpeed = 2;
+                    phase = 1;
+                    phaseTimer = 0;
+                    playerX = canvas.width / 2;
+                    playerY = canvas.height / 2;
+                }
+            } else if (gameState === 'playing') {
+                // Update phase
+                phaseTimer += deltaTime;
+                if (phaseTimer > phaseDuration) {
+                    phase++;
+                    streamSpeed += 0.5;
+                    phaseTimer = 0;
+                }
+
+                // Handle player movement
+                if (keys['w'] || keys['ArrowUp']) playerY = Math.max(0, playerY - playerSpeed);
+                if (keys['s'] || keys['ArrowDown']) playerY = Math.min(canvas.height - playerHeight, playerY + playerSpeed);
+                if (keys['a'] || keys['ArrowLeft']) playerX = Math.max(0, playerX - playerSpeed);
+                if (keys['d'] || keys['ArrowRight']) playerX = Math.min(canvas.width - playerWidth, playerX + playerSpeed);
+
+                // Handle slow time
+                if (keys[' '] && !slowTime && slowTimeCooldown <= 0) {
+                    slowTime = true;
+                    slowTimeStart = timestamp;
+                    slowTimeCooldown = slowTimeCooldownDuration;
+                }
+                if (slowTime && timestamp - slowTimeStart > slowTimeDuration) {
+                    slowTime = false;
+                }
+                if (slowTimeCooldown > 0) {
+                    slowTimeCooldown -= deltaTime;
+                }
+
+                // Generate obstacles (increased frequency)
+                if (Math.random() < 0.03 + phase * 0.008) generateObstacle();
+
+                // Update and draw obstacles
+                obstacles = obstacles.filter(obs => !obs.update(deltaTime));
+                for (let obs of obstacles) obs.draw();
+
+                // Draw player
+                drawPlayer();
+
+                // Draw score and slow time status
+                ctx.fillStyle = '#000000';
+                ctx.font = '20px monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText(`Score: ${score}`, 10, 30);
+                ctx.fillText(`Phase: ${phase}`, 10, 60);
+                ctx.fillText(`Slow Time: ${slowTime ? 'Active' : Math.ceil(slowTimeCooldown / 1000)}s`, 10, 90);
+
+                // Check collisions
+                checkCollision();
+            } else if (gameState === 'gameOver') {
+                ctx.fillStyle = '#000000';
+                ctx.font = '30px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 50);
+                ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2);
+                ctx.fillText('Press R to Retry', canvas.width / 2, canvas.height / 2 + 50);
+                if (keys['r'] || keys['R']) {
+                    gameState = 'start';
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
